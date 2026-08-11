@@ -11,7 +11,7 @@ In addition to the following, note that the [Optax](https://github.com/deepmind/
 ??? abstract "`optimistix.AbstractMinimiser`"
 
     ::: optimistix.AbstractMinimiser
-        selection:
+        options:
             members:
                 - init
                 - step
@@ -21,42 +21,70 @@ In addition to the following, note that the [Optax](https://github.com/deepmind/
 ??? abstract "`optimistix.AbstractGradientDescent`"
 
     ::: optimistix.AbstractGradientDescent
-        selection:
-            members:
-                false
+        options:
+            members: none
 
 ::: optimistix.GradientDescent
-    selection:
+    options:
         members:
             - __init__
 
 ---
 
+??? abstract "`optimistix.AbstractQuasiNewton`"
+
+    ::: optimistix.AbstractQuasiNewton
+        options:
+            members:
+                - init_hessian
+                - update_hessian
+
 ??? abstract "`optimistix.AbstractBFGS`"
 
     ::: optimistix.AbstractBFGS
-        selection:
-            members:
-                false
+        options:
+            members: none
 
 ::: optimistix.BFGS
-    selection:
+    options:
+        members:
+            - __init__
+
+??? abstract "`optimistix.AbstractDFP`"
+
+    ::: optimistix.AbstractDFP
+        options:
+            members: none
+
+::: optimistix.DFP
+    options:
+        members:
+            - __init__
+
+??? abstract "`optimistix.AbstractLBFGS`"
+
+    ::: optimistix.AbstractLBFGS
+        options:
+            members: none
+
+::: optimistix.LBFGS
+    options:
         members:
             - __init__
 
 ---
 
 ::: optimistix.OptaxMinimiser
-    selection:
+    options:
         members:
             - __init__
 
-`optim` in [`optimistix.OptaxMinimiser`][] is an instance of an Optax minimiser. For example, correct usage is `optimistix.OptaxMinimiser(optax.adam(...), ...)`, not `optimistix.OptaxMinimiser(optax.adam, ...)`. 
+`optim` in [`optimistix.OptaxMinimiser`][] is an instance of an Optax minimiser. For example, correct usage is `optimistix.OptaxMinimiser(optax.adam(...), ...)`, not `optimistix.OptaxMinimiser(optax.adam, ...)`.
 
 ---
 
 ::: optimistix.NonlinearCG
-    selection:
+    options:
         members:
             - __init__
 
@@ -72,7 +100,19 @@ In addition to the following, note that the [Optax](https://github.com/deepmind/
 
 ---
 
+::: optimistix.NelderMead
+    options:
+        members:
+            - __init__
+
+---
+
+::: optimistix.GoldenSearch
+    options:
+        members:
+            - __init__
+
 ::: optimistix.BestSoFarMinimiser
-    selection:
+    options:
         members:
             - __init__

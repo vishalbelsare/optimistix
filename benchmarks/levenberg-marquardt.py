@@ -81,7 +81,7 @@ def solve(
         # support forward-mode autodiff, which is used by Levenberg--Marquardt
         adjoint=dfx.DirectAdjoint(),
     )
-    return sol.ys
+    return sol.ys  # pyright: ignore
 
 
 def get_data() -> tuple[Float[Array, "3 2"], Float[Array, "3 50"]]:
@@ -134,11 +134,11 @@ class NormalCholesky(lx.AbstractLinearSolver):
     def transpose(self, state, options):
         assert False
 
-    def allow_dependent_columns(self, operator):
+    def conj(self, state, options):
         assert False
 
-    def allow_dependent_rows(self, operator):
-        assert False
+    def assume_full_rank(self) -> bool:
+        return True
 
 
 # Default option for Optimistix. (QR linear solver.)

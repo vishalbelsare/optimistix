@@ -17,7 +17,7 @@ Features include:
 pip install optimistix
 ```
 
-Requires Python 3.9+ and JAX 0.4.14+ and [Equinox](https://github.com/patrick-kidger/equinox) 0.11.0+.
+Requires Python 3.11+.
 
 ## Documentation
 
@@ -66,6 +66,7 @@ If you found this library to be useful in academic work, then please cite: ([arX
 [Optax](https://github.com/deepmind/optax): first-order gradient (SGD, Adam, ...) optimisers.  
 [Orbax](https://github.com/google/orbax): checkpointing (async/multi-host/multi-device).  
 [Levanter](https://github.com/stanford-crfm/levanter): scalable+reliable training of foundation models (e.g. LLMs).  
+[paramax](https://github.com/danielward27/paramax): parameterizations and constraints for PyTrees.  
 
 **Scientific computing**  
 [Diffrax](https://github.com/patrick-kidger/diffrax): numerical differential equation solvers.  
@@ -79,4 +80,4 @@ If you found this library to be useful in academic work, then please cite: ([arX
 
 ## Credit
 
-Optimistix was primarily built by Jason Rader (@packquickly): [Twitter](https://twitter.com/packquickly); [GitHub](https://github.com/packquickly); [Website](https://www.packquickly.com/).
+Optimistix was primarily built by Jason Rader (@packquickly): [Twitter](https://twitter.com/packquickly); [GitHub](https://github.com/packquickly); [Website](https://www.packquickly.com/). It is being co-maintained by Johanna Haffner (@johannahaffner): [GitHub](https://github.com/johannahaffner); [Website](https://haffner.dev).

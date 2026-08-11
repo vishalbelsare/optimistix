@@ -18,7 +18,7 @@ from .._root_find import AbstractRootFinder
 from .._solution import RESULTS
 
 
-class _BestSoFarState(eqx.Module, Generic[Y, Aux, SolverState], strict=True):
+class _BestSoFarState(eqx.Module, Generic[Y, Aux, SolverState]):
     best_y: Y
     best_aux: Aux
     best_loss: Scalar
@@ -30,25 +30,22 @@ def _auxmented(fn, y, args):
     return out, (out, aux)
 
 
-class _AbstractBestSoFarSolver(
-    AbstractIterativeSolver, Generic[Y, Out, Aux], strict=True
-):
+class _AbstractBestSoFarSolver(AbstractIterativeSolver, Generic[Y, Out, Aux]):
     solver: AbstractVar[AbstractIterativeSolver[Y, Out, tuple[Out, Aux], Any]]
 
     @abc.abstractmethod
-    def _to_loss(self, y: Y, f: Out) -> Scalar:
-        ...
+    def _to_loss(self, y: Y, f: Out) -> Scalar: ...
 
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
     def init(
@@ -121,7 +118,6 @@ class _AbstractBestSoFarSolver(
 class BestSoFarMinimiser(  # pyright: ignore
     _AbstractBestSoFarSolver[Y, Scalar, Aux],
     AbstractMinimiser[Y, Aux, _BestSoFarState],
-    strict=True,
 ):
     """Wraps another minimiser, to return the best-so-far value. That is, it makes a
     copy of the best `y` seen, and returns that.
@@ -138,29 +134,28 @@ class BestSoFarMinimiser(  # pyright: ignore
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
 BestSoFarMinimiser.__init__.__doc__ = """**Arguments:**
 
-- `solver`: the minimiser to wrap.  
+- `solver`: the minimiser to wrap.
 """
 
 
 class BestSoFarLeastSquares(  # pyright: ignore
     _AbstractBestSoFarSolver[Y, Out, Aux],
     AbstractLeastSquaresSolver[Y, Out, Aux, _BestSoFarState],
-    strict=True,
 ):
     """Wraps another least-squares solver, to return the best-so-far value. That is, it
     makes a copy of the best `y` seen, and returns that.
@@ -179,29 +174,28 @@ class BestSoFarLeastSquares(  # pyright: ignore
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
 BestSoFarLeastSquares.__init__.__doc__ = """**Arguments:**
 
-- `solver`: the least-squares solver to wrap.  
+- `solver`: the least-squares solver to wrap.
 """
 
 
 class BestSoFarRootFinder(  # pyright: ignore
     _AbstractBestSoFarSolver[Y, Out, Aux],
     AbstractRootFinder[Y, Out, Aux, _BestSoFarState],
-    strict=True,
 ):
     """Wraps another root-finder, to return the best-so-far value. That is, it
     makes a copy of the best `y` seen, and returns that.
@@ -218,29 +212,28 @@ class BestSoFarRootFinder(  # pyright: ignore
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
 BestSoFarRootFinder.__init__.__doc__ = """**Arguments:**
 
-- `solver`: the root-finder solver to wrap.  
+- `solver`: the root-finder solver to wrap.
 """
 
 
 class BestSoFarFixedPoint(  # pyright: ignore
     _AbstractBestSoFarSolver[Y, Y, Aux],
     AbstractFixedPointSolver[Y, Aux, _BestSoFarState],
-    strict=True,
 ):
     """Wraps another fixed-point solver, to return the best-so-far value. That is, it
     makes a copy of the best `y` seen, and returns that.
@@ -257,20 +250,20 @@ class BestSoFarFixedPoint(  # pyright: ignore
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
 BestSoFarFixedPoint.__init__.__doc__ = """**Arguments:**
 
-- `solver`: the fixed-point solver to wrap.  
+- `solver`: the fixed-point solver to wrap.
 """

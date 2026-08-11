@@ -1,6 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Generic, Optional, Union
-from typing_extensions import TypeAlias
+from typing import Any, Generic, TypeAlias
 
 import equinox as eqx
 import jax
@@ -17,6 +16,7 @@ from .._misc import (
     lin_to_grad,
     max_norm,
     tree_full_like,
+    tree_where,
 )
 from .._search import (
     AbstractDescent,
@@ -27,22 +27,22 @@ from .._solution import RESULTS
 from .learning_rate import LearningRate
 
 
-class _SteepestDescentState(eqx.Module, Generic[Y], strict=True):
+class _SteepestDescentState(eqx.Module, Generic[Y]):
     grad: Y
 
 
-_FnInfo: TypeAlias = Union[
-    FunctionInfo.EvalGrad,
-    FunctionInfo.EvalGradHessian,
-    FunctionInfo.EvalGradHessianInv,
-    FunctionInfo.ResidualJac,
-]
+_FnInfo: TypeAlias = (
+    FunctionInfo.EvalGrad
+    | FunctionInfo.EvalGradHessian
+    | FunctionInfo.EvalGradHessianInv
+    | FunctionInfo.ResidualJac
+)
 
 
-class SteepestDescent(AbstractDescent[Y, _FnInfo, _SteepestDescentState], strict=True):
+class SteepestDescent(AbstractDescent[Y, _FnInfo, _SteepestDescentState]):
     """The descent direction given by locally following the gradient."""
 
-    norm: Optional[Callable[[PyTree], Scalar]] = None
+    norm: Callable[[PyTree], Scalar] | None = None
 
     def init(self, y: Y, f_info_struct: _FnInfo) -> _SteepestDescentState:
         del f_info_struct
@@ -89,7 +89,7 @@ SteepestDescent.__init__.__doc__ = """**Arguments:**
 
 
 class _GradientDescentState(
-    eqx.Module, Generic[Y, Out, Aux, SearchState, DescentState], strict=True
+    eqx.Module, Generic[Y, Out, Aux, SearchState, DescentState]
 ):
     # Updated every search step
     first_step: Bool[Array, ""]
@@ -104,9 +104,7 @@ class _GradientDescentState(
     result: RESULTS
 
 
-class AbstractGradientDescent(
-    AbstractMinimiser[Y, Aux, _GradientDescentState], strict=True
-):
+class AbstractGradientDescent(AbstractMinimiser[Y, Aux, _GradientDescentState]):
     """The gradient descent method for unconstrained minimisation.
 
     At every step, this algorithm performs a line search along the steepest descent
@@ -120,6 +118,13 @@ class AbstractGradientDescent(
     - `norm: Callable[[PyTree], Scalar]`
     - `descent: AbstractDescent`
     - `search: AbstractSearch`
+
+    Supports the following `options`:
+
+    - `autodiff_mode`: whether to use forward- or reverse-mode autodifferentiation to
+        compute the gradient. Can be either `"fwd"` or `"bwd"`. Defaults to `"bwd"`,
+        which is usually more efficient. Changing this can be useful when the target
+        function does not support reverse-mode automatic differentiation.
     """
 
     rtol: AbstractVar[float]
@@ -162,6 +167,7 @@ class AbstractGradientDescent(
         state: _GradientDescentState,
         tags: frozenset[object],
     ) -> tuple[Y, _GradientDescentState, Aux]:
+        autodiff_mode = options.get("autodiff_mode", "bwd")
         f_eval, lin_fn, aux_eval = jax.linearize(
             lambda _y: fn(_y, args), state.y_eval, has_aux=True
         )
@@ -175,7 +181,8 @@ class AbstractGradientDescent(
         )
 
         def accepted(descent_state):
-            (grad,) = lin_to_grad(lin_fn, y)
+            grad = lin_to_grad(lin_fn, state.y_eval, autodiff_mode, f_eval.dtype)
+
             f_eval_info = FunctionInfo.EvalGrad(f_eval, grad)
             descent_state = self.descent.query(state.y_eval, f_eval_info, descent_state)
             y_diff = (state.y_eval**ω - y**ω).ω
@@ -201,6 +208,7 @@ class AbstractGradientDescent(
             search_result == RESULTS.successful, descent_result, search_result
         )
 
+        prev_aux = tree_where(state.first_step, aux, state.aux)
         state = _GradientDescentState(
             first_step=jnp.array(False),
             y_eval=y_eval,
@@ -211,7 +219,7 @@ class AbstractGradientDescent(
             terminate=terminate,
             result=result,
         )
-        return y, state, aux
+        return y, state, prev_aux
 
     def terminate(
         self,
@@ -238,8 +246,16 @@ class AbstractGradientDescent(
         return y, aux, {}
 
 
-class GradientDescent(AbstractGradientDescent[Y, Aux], strict=True):
-    """Classic gradient descent with a learning rate `learning_rate`."""
+class GradientDescent(AbstractGradientDescent[Y, Aux]):
+    """Classic gradient descent with a learning rate `learning_rate`.
+
+    Supports the following `options`:
+
+    - `autodiff_mode`: whether to use forward- or reverse-mode autodifferentiation to
+        compute the gradient. Can be either `"fwd"` or `"bwd"`. Defaults to `"bwd"`,
+        which is usually more efficient. Changing this can be useful when the target
+        function does not support reverse-mode automatic differentiation.
+    """
 
     rtol: float
     atol: float

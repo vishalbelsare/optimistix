@@ -1,7 +1,0 @@
-beartype
-equinox
-lineax
-optax
-pytest
-pytest-xdist
-jaxlib

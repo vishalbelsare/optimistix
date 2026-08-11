@@ -5,7 +5,6 @@ from .best_so_far import (
     BestSoFarMinimiser as BestSoFarMinimiser,
     BestSoFarRootFinder as BestSoFarRootFinder,
 )
-from .bfgs import AbstractBFGS as AbstractBFGS, BFGS as BFGS
 from .bisection import Bisection as Bisection
 from .dogleg import Dogleg as Dogleg, DoglegDescent as DoglegDescent
 from .fixed_point import FixedPointIteration as FixedPointIteration
@@ -14,6 +13,7 @@ from .gauss_newton import (
     GaussNewton as GaussNewton,
     NewtonDescent as NewtonDescent,
 )
+from .golden import GoldenSearch as GoldenSearch
 from .gradient_methods import (
     AbstractGradientDescent as AbstractGradientDescent,
     GradientDescent as GradientDescent,
@@ -26,6 +26,7 @@ from .levenberg_marquardt import (
     IndirectLevenbergMarquardt as IndirectLevenbergMarquardt,
     LevenbergMarquardt as LevenbergMarquardt,
 )
+from .limited_memory_bfgs import AbstractLBFGS as AbstractLBFGS, LBFGS as LBFGS
 from .nelder_mead import NelderMead as NelderMead
 from .newton_chord import Chord as Chord, Newton as Newton
 from .nonlinear_cg import (
@@ -37,6 +38,13 @@ from .nonlinear_cg import (
     polak_ribiere as polak_ribiere,
 )
 from .optax import OptaxMinimiser as OptaxMinimiser
+from .quasi_newton import (
+    AbstractBFGS as AbstractBFGS,
+    AbstractDFP as AbstractDFP,
+    AbstractQuasiNewton as AbstractQuasiNewton,
+    BFGS as BFGS,
+    DFP as DFP,
+)
 from .trust_region import (
     ClassicalTrustRegion as ClassicalTrustRegion,
     LinearTrustRegion as LinearTrustRegion,

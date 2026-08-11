@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, cast, Generic, Union
+from typing import Any, cast, Generic
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -44,7 +44,7 @@ def fletcher_reeves(grad: Y, grad_prev: Y, y_diff_prev: Y) -> Scalar:
     # Triggers at initialisation and convergence, as above.
     pred = denominator > jnp.finfo(denominator.dtype).eps
     safe_denom = jnp.where(pred, denominator, 1)
-    return jnp.where(pred, numerator / safe_denom, 0)
+    return cast(Scalar, jnp.where(pred, numerator / safe_denom, 0))
 
 
 def hestenes_stiefel(grad: Y, grad_prev: Y, y_diff_prev: Y) -> Scalar:
@@ -56,7 +56,7 @@ def hestenes_stiefel(grad: Y, grad_prev: Y, y_diff_prev: Y) -> Scalar:
     # Triggers at initialisation and convergence, as above.
     pred = jnp.abs(denominator) > jnp.finfo(denominator.dtype).eps
     safe_denom = jnp.where(pred, denominator, 1)
-    return jnp.where(pred, numerator / safe_denom, 0)
+    return cast(Scalar, jnp.where(pred, numerator / safe_denom, 0))
 
 
 def dai_yuan(grad: Y, grad_prev: Y, y_diff_prev: Y) -> Scalar:
@@ -67,10 +67,10 @@ def dai_yuan(grad: Y, grad_prev: Y, y_diff_prev: Y) -> Scalar:
     # Triggers at initialisation and convergence, as above.
     pred = jnp.abs(denominator) > jnp.finfo(denominator.dtype).eps
     safe_denom = jnp.where(pred, denominator, 1)
-    return jnp.where(pred, numerator / safe_denom, 0)
+    return cast(Scalar, jnp.where(pred, numerator / safe_denom, 0))
 
 
-class _NonlinearCGDescentState(eqx.Module, Generic[Y], strict=True):
+class _NonlinearCGDescentState(eqx.Module, Generic[Y]):
     y_diff: Y
     grad: Y
 
@@ -78,15 +78,12 @@ class _NonlinearCGDescentState(eqx.Module, Generic[Y], strict=True):
 class NonlinearCGDescent(
     AbstractDescent[
         Y,
-        Union[
-            FunctionInfo.EvalGrad,
-            FunctionInfo.EvalGradHessian,
-            FunctionInfo.EvalGradHessianInv,
-            FunctionInfo.ResidualJac,
-        ],
+        FunctionInfo.EvalGrad
+        | FunctionInfo.EvalGradHessian
+        | FunctionInfo.EvalGradHessianInv
+        | FunctionInfo.ResidualJac,
         _NonlinearCGDescentState,
     ],
-    strict=True,
 ):
     """The nonlinear conjugate gradient step."""
 
@@ -95,12 +92,10 @@ class NonlinearCGDescent(
     def init(
         self,
         y: Y,
-        f_info_struct: Union[
-            FunctionInfo.EvalGrad,
-            FunctionInfo.EvalGradHessian,
-            FunctionInfo.EvalGradHessianInv,
-            FunctionInfo.ResidualJac,
-        ],
+        f_info_struct: FunctionInfo.EvalGrad
+        | FunctionInfo.EvalGradHessian
+        | FunctionInfo.EvalGradHessianInv
+        | FunctionInfo.ResidualJac,
     ) -> _NonlinearCGDescentState:
         del f_info_struct
         return _NonlinearCGDescentState(
@@ -111,12 +106,10 @@ class NonlinearCGDescent(
     def query(
         self,
         y: Y,
-        f_info: Union[
-            FunctionInfo.EvalGrad,
-            FunctionInfo.EvalGradHessian,
-            FunctionInfo.EvalGradHessianInv,
-            FunctionInfo.ResidualJac,
-        ],
+        f_info: FunctionInfo.EvalGrad
+        | FunctionInfo.EvalGradHessian
+        | FunctionInfo.EvalGradHessianInv
+        | FunctionInfo.ResidualJac,
         state: _NonlinearCGDescentState,
     ) -> _NonlinearCGDescentState:
         del y
@@ -164,18 +157,27 @@ class NonlinearCGDescent(
 NonlinearCGDescent.__init__.__doc__ = """**Arguments:**
 
 - `method`: A callable `method(vector, vector_prev, diff_prev)` describing how to
-    calculate the beta parameter of nonlinear CG. Each of these inputs has the meaning
-    described above. The "beta parameter" is the sake as can be described as e.g. the
-    β_n value
-    [on Wikipedia](https://en.wikipedia.org/wiki/Nonlinear_conjugate_gradient_method).
-    In practice Optimistix includes four built-in methods:
+    calculate the beta parameter of nonlinear CG. Nonlinear CG uses the previous search
+    direction, scaled by beta, and subtracts the gradient to find the next search
+    direction. This parameter, in the nonlinear case, is the same as the parameter β_n
+    described e.g. [on Wikipedia](https://en.wikipedia.org/wiki/Nonlinear_conjugate_gradient_method)
+    for the linear case.
+    Defaults to `polak_ribiere`. Optimistix includes four built-in methods:
     [`optimistix.polak_ribiere`][], [`optimistix.fletcher_reeves`][],
     [`optimistix.hestenes_stiefel`][], and [`optimistix.dai_yuan`][].
 """
 
 
-class NonlinearCG(AbstractGradientDescent[Y, Aux], strict=True):
-    """The nonlinear conjugate gradient method."""
+class NonlinearCG(AbstractGradientDescent[Y, Aux]):
+    """The nonlinear conjugate gradient method.
+
+    Supports the following `options`:
+
+    - `autodiff_mode`: whether to use forward- or reverse-mode autodifferentiation to
+        compute the gradient. Can be either `"fwd"` or `"bwd"`. Defaults to `"bwd"`,
+        which is usually more efficient. Changing this can be useful when the target
+        function does not support reverse-mode automatic differentiation.
+    """
 
     rtol: float
     atol: float

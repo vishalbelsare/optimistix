@@ -1,4 +1,4 @@
-from typing import Any, cast, Optional, Union
+from typing import Any, cast
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -9,15 +9,13 @@ from jaxtyping import PyTree
 from ._adjoint import AbstractAdjoint, ImplicitAdjoint
 from ._custom_types import Aux, Fn, MaybeAuxFn, Out, SolverState, Y
 from ._iterate import AbstractIterativeSolver, iterative_solve
-from ._least_squares import AbstractLeastSquaresSolver, least_squares
+from ._least_squares import AbstractLeastSquaresSolver
 from ._minimise import AbstractMinimiser, minimise
 from ._misc import inexact_asarray, NoneAux, OutAsArray, tree_full_like
 from ._solution import Solution
 
 
-class AbstractRootFinder(
-    AbstractIterativeSolver[Y, Out, Aux, SolverState], strict=True
-):
+class AbstractRootFinder(AbstractIterativeSolver[Y, Out, Aux, SolverState]):
     """Abstract base class for all root finders."""
 
 
@@ -47,16 +45,16 @@ def _to_lstsq_fn(root_fn, y, args):
 class _ToRoot(AbstractIterativeSolver):
     solver: AbstractVar[AbstractIterativeSolver]
 
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
     def init(self, fn, y, args, options, f_struct, aux_struct, tags):
@@ -87,16 +85,16 @@ class _MinimToRoot(AbstractMinimiser, _ToRoot):
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
@@ -105,16 +103,16 @@ class _LstsqToRoot(AbstractLeastSquaresSolver, _ToRoot):
 
     # Redeclare these three to work around the Equinox bug fixed here:
     # https://github.com/patrick-kidger/equinox/pull/544
-    @property  # pyright: ignore
+    @property
     def rtol(self):
         return self.solver.rtol
 
-    @property  # pyright: ignore
+    @property
     def atol(self):
         return self.solver.atol
 
-    @property  # pyright: ignore
-    def norm(self):
+    @property
+    def norm(self):  # pyright: ignore[reportIncompatibleMethodOverride]
         return self.solver.norm
 
 
@@ -122,13 +120,13 @@ class _LstsqToRoot(AbstractLeastSquaresSolver, _ToRoot):
 def root_find(
     fn: MaybeAuxFn[Y, Out, Aux],
     # no type parameters, see https://github.com/microsoft/pyright/discussions/5599
-    solver: Union[AbstractRootFinder, AbstractLeastSquaresSolver, AbstractMinimiser],
+    solver: AbstractRootFinder | AbstractLeastSquaresSolver | AbstractMinimiser,
     y0: Y,
     args: PyTree = None,
-    options: Optional[dict[str, Any]] = None,
+    options: dict[str, Any] | None = None,
     *,
     has_aux: bool = False,
-    max_steps: Optional[int] = 256,
+    max_steps: int | None = 256,
     adjoint: AbstractAdjoint = ImplicitAdjoint(),
     throw: bool = True,
     tags: frozenset[object] = frozenset(),
@@ -163,7 +161,7 @@ def root_find(
         an error. If `False` then the returned solution object will have a `result`
         field indicating whether any failures occured. (See [`optimistix.Solution`][].)
         Keyword only argument.
-    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing the
+    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing
         any structure of the Jacobian of `fn` with respect to `y`. Used with some
         solvers (e.g. [`optimistix.Newton`][]), and with some adjoint methods (e.g.
         [`optimistix.ImplicitAdjoint`][]) to improve the efficiency of linear solves.
@@ -195,26 +193,36 @@ def root_find(
         sol = eqx.tree_at(lambda s: s.aux, sol, aux)
         return sol
     elif isinstance(solver, AbstractLeastSquaresSolver):
-        del tags
-        return least_squares(
-            eqx.Partial(_to_lstsq_fn, fn),
+        y0 = jtu.tree_map(inexact_asarray, y0)
+        lstsq_fn = eqx.Partial(_to_lstsq_fn, fn)
+        lstsq_fn = eqx.filter_closure_convert(lstsq_fn, y0, args)  # pyright: ignore
+        lstsq_fn = cast(Fn[Y, Out, Aux], lstsq_fn)
+        f_struct, aux_struct = lstsq_fn.out_struct  # pyright: ignore[reportFunctionMemberAccess]
+        if options is None:
+            options = {}
+
+        sol = iterative_solve(
+            lstsq_fn,
             _LstsqToRoot(solver),  # pyright: ignore
             y0,
             args,
             options,
-            has_aux=True,
             max_steps=max_steps,
             adjoint=adjoint,
             throw=throw,
+            tags=tags,
+            f_struct=f_struct,
+            aux_struct=aux_struct,
+            rewrite_fn=_rewrite_fn,
         )
-        _, aux = sol.aux
+        _, aux = sol.aux  # pyright: ignore[reportGeneralTypeIssues]
         sol = eqx.tree_at(lambda s: s.aux, sol, aux)
         return sol
     else:
         y0 = jtu.tree_map(inexact_asarray, y0)
         fn = eqx.filter_closure_convert(fn, y0, args)  # pyright: ignore
         fn = cast(Fn[Y, Out, Aux], fn)
-        f_struct, aux_struct = fn.out_struct
+        f_struct, aux_struct = fn.out_struct  # pyright: ignore[reportFunctionMemberAccess]
         if options is None:
             options = {}
         return iterative_solve(

@@ -8,3 +8,9 @@ examples/data
 .all_objects.cache
 .pymon
 .idea
+.venv
+.DS_Store
+.devcontainer
+.benchmarks
+uv.lock
+.python-version

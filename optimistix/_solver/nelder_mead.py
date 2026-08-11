@@ -16,7 +16,7 @@ from .._misc import max_norm, tree_full_like, tree_where
 from .._solution import RESULTS
 
 
-class _NMStats(eqx.Module, strict=True):
+class _NMStats(eqx.Module):
     n_reflect: Scalar
     n_inner_contract: Scalar
     n_outer_contract: Scalar
@@ -24,7 +24,7 @@ class _NMStats(eqx.Module, strict=True):
     n_shrink: Scalar
 
 
-class _NelderMeadState(eqx.Module, Generic[Y, Aux], strict=True):
+class _NelderMeadState(eqx.Module, Generic[Y, Aux]):
     """
     Information to update and store the simplex of the Nelder Mead update. If
     `dim` is the dimension of the problem, we expect there to be
@@ -88,7 +88,7 @@ def _update_stats(
     )
 
 
-class NelderMead(AbstractMinimiser[Y, Aux, _NelderMeadState[Y, Aux]], strict=True):
+class NelderMead(AbstractMinimiser[Y, Aux, _NelderMeadState[Y, Aux]]):
     """The Nelder-Mead minimisation algorithm. (Downhill simplex derivative-free
     method.)
 
@@ -96,7 +96,7 @@ class NelderMead(AbstractMinimiser[Y, Aux, _NelderMeadState[Y, Aux]], strict=Tru
     need gradient evaluations.
 
     This is usually an "algorithm of last resort". Gradient-based algorithms are usually
-    much faster, and be more likely to converge to a minima.
+    much faster, and are more likely to converge to a minima.
 
     Comparable to `scipy.optimize.minimize(method="Nelder-Mead")`.
     """
@@ -467,14 +467,14 @@ NelderMead.__init__.__doc__ = """**Arguments:**
 
 - `rtol`: Relative tolerance for terminating the solve.
 - `atol`: Absolute tolerance for terminating the solve.
-- `norm`: The norm used to determine the difference between two iterates in the 
+- `norm`: The norm used to determine the difference between two iterates in the
     convergence criteria. Should be any function `PyTree -> Scalar`. Optimistix
     includes three built-in norms: [`optimistix.max_norm`][],
     [`optimistix.rms_norm`][], and [`optimistix.two_norm`][].
-- `rdelta`: Nelder-Mead creates an initial simplex by appending a scaled identity 
+- `rdelta`: Nelder-Mead creates an initial simplex by appending a scaled identity
     matrix to `y`. The `i`th element of this matrix is `rdelta * y_i + adelta`.
     That is, this is the relative size for creating the initial simplex.
-- `adelta`: Nelder-Mead creates an initial simplex by appending a scaled identity 
+- `adelta`: Nelder-Mead creates an initial simplex by appending a scaled identity
     matrix to `y`. The `i`th element of this matrix is `rdelta * y_i + adelta`.
     That is, this is the absolute size for creating the initial simplex.
 """

@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, cast, Generic, Union
+from typing import Any, cast, Generic
 
 import equinox as eqx
 import jax.lax as lax
@@ -10,6 +10,7 @@ from jaxtyping import Array, PyTree, Scalar
 
 from .._custom_types import Aux, Out, Y
 from .._misc import (
+    default_verbose,
     max_norm,
     sum_squares,
     tree_dot,
@@ -25,7 +26,7 @@ from .gauss_newton import AbstractGaussNewton, newton_step
 from .trust_region import ClassicalTrustRegion
 
 
-class _DoglegDescentState(eqx.Module, Generic[Y], strict=True):
+class _DoglegDescentState(eqx.Module, Generic[Y]):
     newton: Y
     cauchy: Y
     newton_norm: Scalar
@@ -36,10 +37,9 @@ class _DoglegDescentState(eqx.Module, Generic[Y], strict=True):
 class DoglegDescent(
     AbstractDescent[
         Y,
-        Union[FunctionInfo.EvalGradHessian, FunctionInfo.ResidualJac],
+        FunctionInfo.EvalGradHessian | FunctionInfo.ResidualJac,
         _DoglegDescentState,
     ],
-    strict=True,
 ):
     """The Dogleg descent step, which switches between the Cauchy and the Newton
     descent directions.
@@ -54,7 +54,7 @@ class DoglegDescent(
     def init(
         self,
         y: Y,
-        f_info_struct: Union[FunctionInfo.EvalGradHessian, FunctionInfo.ResidualJac],
+        f_info_struct: FunctionInfo.EvalGradHessian | FunctionInfo.ResidualJac,
     ) -> _DoglegDescentState:
         # Dummy values; unused
         del f_info_struct
@@ -69,7 +69,7 @@ class DoglegDescent(
     def query(
         self,
         y: Y,
-        f_info: Union[FunctionInfo.EvalGradHessian, FunctionInfo.ResidualJac],
+        f_info: FunctionInfo.EvalGradHessian | FunctionInfo.ResidualJac,
         state: _DoglegDescentState,
     ) -> _DoglegDescentState:
         del y, state
@@ -214,7 +214,7 @@ DoglegDescent.__init__.__doc__ = """**Arguments:**
 """
 
 
-class Dogleg(AbstractGaussNewton[Y, Out, Aux], strict=True):
+class Dogleg(AbstractGaussNewton[Y, Out, Aux]):
     """Dogleg algorithm. Used for nonlinear least squares problems.
 
     Given a quadratic bowl that locally approximates the function to be minimised, then
@@ -240,7 +240,7 @@ class Dogleg(AbstractGaussNewton[Y, Out, Aux], strict=True):
     norm: Callable[[PyTree], Scalar]
     descent: DoglegDescent[Y]
     search: ClassicalTrustRegion[Y]
-    verbose: frozenset[str]
+    verbose: Callable[..., None]
 
     def __init__(
         self,
@@ -248,7 +248,7 @@ class Dogleg(AbstractGaussNewton[Y, Out, Aux], strict=True):
         atol: float,
         norm: Callable[[PyTree], Scalar] = max_norm,
         linear_solver: lx.AbstractLinearSolver = lx.AutoLinearSolver(well_posed=None),
-        verbose: frozenset[str] = frozenset(),
+        verbose: bool | Callable[..., None] = False,
     ):
         # We don't expose root_finder to the default API for Dogleg because
         # we assume the `trust_region_norm` norm is `two_norm`, which has
@@ -258,20 +258,21 @@ class Dogleg(AbstractGaussNewton[Y, Out, Aux], strict=True):
         self.norm = norm
         self.descent = DoglegDescent(linear_solver=linear_solver)
         self.search = ClassicalTrustRegion()
-        self.verbose = verbose
+        self.verbose = default_verbose(verbose)
 
 
 Dogleg.__init__.__doc__ = """**Arguments:**
 
 - `rtol`: Relative tolerance for terminating the solve.
 - `atol`: Absolute tolerance for terminating the solve.
-- `norm`: The norm used to determine the difference between two iterates in the 
+- `norm`: The norm used to determine the difference between two iterates in the
     convergence criteria. Should be any function `PyTree -> Scalar`. Optimistix
     includes three built-in norms: [`optimistix.max_norm`][],
     [`optimistix.rms_norm`][], and [`optimistix.two_norm`][].
 - `linear_solver`: The linear solver used to compute the Newton part of the dogleg step.
 - `verbose`: Whether to print out extra information about how the solve is proceeding.
-    Should be a frozenset of strings, specifying what information to print out. Valid
-    entries are `step`, `loss`, `accepted`, `step_size`, `y`. For example
-    `verbose=frozenset({"loss", "step_size"})`.
+    Can either be `False` to print out nothing, or `True` to print out all information,
+    or (for customisation) a callable `**kwargs -> None`. If provided as a callable then
+    each value will be a 2-tuple of `(str, jax.Array)` providing a human-readable name
+    and its corresponding value.
 """

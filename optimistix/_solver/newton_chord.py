@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Generic, Optional, TYPE_CHECKING
+from typing import Any, Generic, TYPE_CHECKING
 
 import equinox as eqx
 import jax
@@ -17,7 +17,7 @@ from equinox.internal import ω
 from jaxtyping import Array, Bool, PyTree, Scalar
 
 from .._custom_types import Aux, Fn, Out, Y
-from .._misc import cauchy_termination, max_norm, tree_full_like
+from .._misc import cauchy_termination, max_norm, tree_dtype, tree_full_like
 from .._root_find import AbstractRootFinder
 from .._solution import RESULTS
 
@@ -37,9 +37,9 @@ def _converged(factor: Scalar, tol: float) -> Bool[Array, " "]:
     return (factor > 0) & (factor < tol)
 
 
-class _NewtonChordState(eqx.Module, Generic[Y], strict=True):
+class _NewtonChordState(eqx.Module, Generic[Y]):
     f: PyTree[Array]
-    linear_state: Optional[tuple[lx.AbstractLinearOperator, PyTree]]
+    linear_state: tuple[lx.AbstractLinearOperator, PyTree] | None
     diff: Y
     diffsize: Scalar
     diffsize_prev: Scalar
@@ -47,7 +47,7 @@ class _NewtonChordState(eqx.Module, Generic[Y], strict=True):
     step: Scalar
 
 
-class _NoAux(eqx.Module, strict=True):
+class _NoAux(eqx.Module):
     fn: Callable
 
     def __call__(self, y, args):
@@ -56,9 +56,7 @@ class _NoAux(eqx.Module, strict=True):
         return out
 
 
-class _AbstractNewtonChord(
-    AbstractRootFinder[Y, Out, Aux, _NewtonChordState[Y]], strict=True
-):
+class _AbstractNewtonChord(AbstractRootFinder[Y, Out, Aux, _NewtonChordState[Y]]):
     rtol: float
     atol: float
     norm: Callable[[PyTree], Scalar] = max_norm
@@ -91,12 +89,13 @@ class _AbstractNewtonChord(
             f_val = tree_full_like(f_struct, jnp.inf)
         else:
             f_val = None
+        dtype = tree_dtype(f_struct)
         return _NewtonChordState(
             f=f_val,
             linear_state=linear_state,
             diff=tree_full_like(y, jnp.inf),
-            diffsize=jnp.array(jnp.inf),
-            diffsize_prev=jnp.array(1.0),
+            diffsize=jnp.array(jnp.inf, dtype=dtype),
+            diffsize_prev=jnp.array(1.0, dtype=dtype),
             result=RESULTS.successful,
             step=jnp.array(0),
         )
@@ -145,7 +144,7 @@ class _AbstractNewtonChord(
             f=f_val,
             linear_state=state.linear_state,
             diff=diff,
-            diffsize=diffsize,
+            diffsize=jnp.asarray(diffsize, dtype=state.diffsize.dtype),
             diffsize_prev=state.diffsize,
             result=RESULTS.promote(sol.result),
             step=state.step + 1,
@@ -187,7 +186,7 @@ class _AbstractNewtonChord(
             converged = _converged(factor, self.kappa)
             terminate = at_least_two & (small | diverged | converged)
             terminate_result = RESULTS.where(
-                jnp.invert(small) & (diverged | jnp.invert(converged)),
+                at_least_two & jnp.invert(small) & diverged,
                 RESULTS.nonlinear_divergence,
                 RESULTS.successful,
             )
@@ -210,7 +209,7 @@ class _AbstractNewtonChord(
         return y, aux, {}
 
 
-class Newton(_AbstractNewtonChord[Y, Out, Aux], strict=True):
+class Newton(_AbstractNewtonChord[Y, Out, Aux]):
     """Newton's method for root finding. Also sometimes known as Newton--Raphson.
 
     Unlike the SciPy implementation of Newton's method, the Optimistix version also
@@ -229,7 +228,7 @@ class Newton(_AbstractNewtonChord[Y, Out, Aux], strict=True):
     _is_newton = True
 
 
-class Chord(_AbstractNewtonChord[Y, Out, Aux], strict=True):
+class Chord(_AbstractNewtonChord[Y, Out, Aux]):
     """The Chord method of root finding.
 
     This is equivalent to the Newton method, except that the Jacobian is computed only
@@ -256,7 +255,7 @@ _init_doc = """**Arguments:**
 
 - `rtol`: Relative tolerance for terminating the solve.
 - `atol`: Absolute tolerance for terminating the solve.
-- `norm`: The norm used to determine the difference between two iterates in the 
+- `norm`: The norm used to determine the difference between two iterates in the
     convergence criteria. Should be any function `PyTree -> Scalar`. Optimistix
     includes three built-in norms: [`optimistix.max_norm`][],
     [`optimistix.rms_norm`][], and [`optimistix.two_norm`][].

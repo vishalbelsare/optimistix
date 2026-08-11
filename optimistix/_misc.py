@@ -1,41 +1,62 @@
+import inspect
 from collections.abc import Callable
-from typing import Any, Literal, overload, TypeVar, Union
+from typing import Any, Literal, overload, TypeVar
 
 import equinox as eqx
 import equinox.internal as eqxi
 import jax
-import jax.core
+import jax.extend as jex
+import jax.flatten_util as jfu
 import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 from equinox.internal import ω
-from jaxtyping import Array, ArrayLike, Bool, PyTree, Scalar
+from jaxtyping import Array, ArrayLike, Bool, PyTree, Scalar, ScalarLike
 from lineax.internal import (
-    default_floating_dtype as default_floating_dtype,
-    max_norm as max_norm,
-    rms_norm as rms_norm,
-    sum_squares as sum_squares,
-    tree_dot as tree_dot,
-    two_norm as two_norm,
+    default_floating_dtype as _default_floating_dtype,
+    max_norm as _max_norm,
+    rms_norm as _rms_norm,
+    sum_squares as _sum_squares,
+    tree_dot as _tree_dot,
+    two_norm as _two_norm,
 )
 
 from ._custom_types import Y
 
 
+# Make the wrapped function a genuine member of this module.
+def _wrap(fn):
+    # Not using `functools.wraps` as our docgen will chase that.
+    def wrapped_fn(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    wrapped_fn.__signature__ = inspect.signature(fn)  # pyright: ignore[reportFunctionMemberAccess]
+    wrapped_fn.__name__ = wrapped_fn.__qualname__ = fn.__name__
+    wrapped_fn.__module__ = __name__
+    wrapped_fn.__doc__ = fn.__doc__
+    return wrapped_fn
+
+
+default_floating_dtype = _wrap(_default_floating_dtype)
+max_norm = _wrap(_max_norm)
+rms_norm = _wrap(_rms_norm)
+sum_squares = _wrap(_sum_squares)
+tree_dot = _wrap(_tree_dot)
+two_norm = _wrap(_two_norm)
+
+
 @overload
 def tree_full_like(
-    struct: PyTree[Union[Array, jax.ShapeDtypeStruct]],
+    struct: PyTree[Array | jax.ShapeDtypeStruct],
     fill_value: ArrayLike,
     allow_static: Literal[False] = False,
-):
-    ...
+): ...
 
 
 @overload
 def tree_full_like(
     struct: PyTree, fill_value: ArrayLike, allow_static: Literal[True] = True
-):
-    ...
+): ...
 
 
 def tree_full_like(struct: PyTree, fill_value: ArrayLike, allow_static: bool = False):
@@ -61,12 +82,130 @@ def tree_full_like(struct: PyTree, fill_value: ArrayLike, allow_static: bool = F
     return jtu.tree_map(fn, struct)
 
 
+def tree_allfinite(tree: PyTree[Array]) -> Bool[Array, ""]:
+    bools = jtu.tree_map(lambda x: jnp.all(jnp.isfinite(x)), tree)
+    return jtu.tree_reduce(jnp.logical_and, bools, jnp.array(True))
+
+
 def tree_where(
-    pred: Bool[ArrayLike, ""], true: PyTree[ArrayLike], false: PyTree[ArrayLike]
+    pred: PyTree,
+    true: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+    false: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+) -> PyTree[ArrayLike, " T"]:  # pyright: ignore[reportUndefinedVariable]
+    """Return a pytree with values from `true` where `pred` is true, and `false` where
+    `pred` is false. `pred` can be any tree-prefix of `true` and `false`, but we do
+    assume that `true` and `false` share the same pytree structure.
+    """
+    return jtu.tree_map(
+        lambda p, t, f: jtu.tree_map(lambda ti, fi: jnp.where(p, ti, fi), t, f),
+        pred,
+        true,
+        false,
+    )
+
+
+def tree_dtype(tree: PyTree[ArrayLike | jax.ShapeDtypeStruct]):
+    leaves = []
+    jtu.tree_map(leaves.append, tree)
+    if len(leaves) == 0:
+        return default_floating_dtype()
+    else:
+        return jnp.result_type(*leaves)
+
+
+def tree_clip(
+    tree: PyTree[ArrayLike], lower: PyTree[ArrayLike], upper: PyTree[ArrayLike]
 ) -> PyTree[Array]:
-    """Return the `true` or `false` pytree depending on `pred`."""
-    keep = lambda a, b: jnp.where(pred, a, b)
-    return jtu.tree_map(keep, true, false)
+    """Clip tree to values lower, upper. Note that we do not check that the lower bound
+    is actually less than the upper bound. If the upper bound is less than the lower
+    bound, then the values will be clipped to the upper bound, since this is what
+    `jnp.clip` does.
+    """
+    return jtu.tree_map(lambda x, l, u: jnp.clip(x, min=l, max=u), tree, lower, upper)
+
+
+def tree_min(tree: PyTree[ArrayLike]) -> Scalar:
+    values, _ = jfu.ravel_pytree(tree)
+    return jnp.min(values)
+
+
+def tree_max(tree: PyTree[ArrayLike]) -> Scalar:
+    values, _ = jfu.ravel_pytree(tree)
+    return jnp.max(values)
+
+
+def feasible_step_length(
+    current: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+    proposed_step: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+    lower_bound: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+    upper_bound: PyTree[ArrayLike, " T"],  # pyright: ignore[reportUndefinedVariable]
+    *,
+    offset: ScalarLike | None = None,
+) -> PyTree[ArrayLike, " T"]:  # pyright: ignore[reportUndefinedVariable]
+    """Returns the maximum feasible step length for any current value, its bounds, and a
+    proposed step, as a value for each element of the PyTree.
+    Where taking the full step does not result in a violation of the bounds, a value of
+    1.0 is returned, which corresponds to a full step.
+    We're assuming that the step is to be added to the current value.
+
+    If the proposed step has a positive sign, then it is limited by the distance to the
+    upper bound. If the proposed step has a negative sign, then it is limited by the
+    distance to the lower bound. When we're at the boundary or outside of it, steps that
+    improve upon this are allowed - e.g. when (upper - y) is negative, then we may take
+    a step in the direction of -y. Similarly, if (upper - y) is zero, steps in the
+    direction of -y are allowed.
+    As such, this utility function does not check whether the current value is within
+    the bounds and does not raise an error if it is not. It will, however, not make the
+    problem worse either. This means that it is up to the solvers how this case is
+    handled or prevented.
+
+    Optionally, an offset may be used to ensure that we remain in the strict interior of
+    the feasible set.
+
+    Note that this function can return a feasible step length of 0.0, and this case
+    should be handled where this function is used. Likewise, any desired reduction over
+    fields or the PyTree as a whole (to get the maximum feasible step length for all
+    iterates, or for primal and dual variables separately, for instance) should be
+    performed where this function is used. The maximum feasible step length for the
+    whole tree is then obtained as `tree_min(feasible_step_length(...))`.
+
+    **Arguments**:
+
+    - `current`: The current value of an optimisation variable, e.g. `y`.
+    - `proposed_step`: The proposed step - usually computed as the result of a linear
+        solve. Must have the same PyTree structure as `current`.
+    - `lower`: The lower bound. Must have the same PyTree structure as `current`.
+    - `upper`: The upper bound. Must have the same PyTree structure as `current`.
+    - `offset`: The offset from the boundary. If passed, then the distance to the bounds
+        is multiplied by (1 - offset), to ensure that we stay in the strict interior.
+        The value of this offset should be in [0, 1), but this is not checked. Values
+        used are typically on the order of 10^-2. Keyword-only argument.
+    """
+    # Workaround for
+    # https://github.com/patrick-kidger/optimistix/issues/185#issuecomment-3492999481
+    if offset is None:
+        offset = jnp.array(0.0)
+
+    def max_step(x, dx, lower, upper):
+        distance_to_lower = (1 - offset) * (x - lower)
+        distance_to_upper = (1 - offset) * (upper - x)
+
+        # Scale by the distance to the bounds if we're moving towards them
+        max_to_lower = jnp.asarray(jnp.where(dx < 0, -distance_to_lower / dx, jnp.inf))
+        max_to_upper = jnp.asarray(jnp.where(dx > 0, distance_to_upper / dx, jnp.inf))
+
+        # We do not allow negative step sizes. These can occur if we're already outside
+        # the feasible region, and allowing them would let us venture further where
+        # we do not want to go!
+        # We also do not propose taking more than a full step, and hence truncate to 1.
+        max_to_lower = jnp.clip(max_to_lower, min=0, max=1)
+        max_to_upper = jnp.clip(max_to_upper, min=0, max=1)
+
+        # The shorter of the two is now the constrained step length
+        return jnp.where(max_to_lower < max_to_upper, max_to_lower, max_to_upper)
+
+    max_steps = jtu.tree_map(max_step, current, proposed_step, lower_bound, upper_bound)
+    return max_steps
 
 
 def resolve_rcond(rcond, n, m, dtype):
@@ -76,7 +215,7 @@ def resolve_rcond(rcond, n, m, dtype):
         return jnp.where(rcond < 0, jnp.finfo(dtype).eps, rcond)
 
 
-class NoneAux(eqx.Module, strict=True):
+class NoneAux(eqx.Module):
     """Wrap a function `fn` so it returns a dummy aux value `None`
 
     NoneAux is used to give a consistent API between functions which have an aux
@@ -89,7 +228,7 @@ class NoneAux(eqx.Module, strict=True):
         return self.fn(*args, **kwargs), None
 
 
-class OutAsArray(eqx.Module, strict=True):
+class OutAsArray(eqx.Module):
     """Wrap a minimisation/root-find/etc. function so that its mathematical outputs are
     all inexact arrays, and its auxiliary outputs are all arrays.
     """
@@ -103,23 +242,20 @@ class OutAsArray(eqx.Module, strict=True):
         return out, aux
 
 
-def jacobian(fn, in_size, out_size, has_aux=False):
-    """Compute the Jacobian of a function using forward or backward mode AD.
-
-    `jacobian` chooses between forward and backwards autodiff depending on the input
-    and output dimension of `fn`, as specified in `in_size` and `out_size`.
-    """
-
-    # Heuristic for which is better in each case
-    # These could probably be tuned a lot more.
-    if (in_size < 100) or (in_size <= 1.5 * out_size):
-        return jax.jacfwd(fn, has_aux=has_aux)
+def lin_to_grad(lin_fn, y_eval, autodiff_mode, dtype):
+    # Only the shape and dtype of y_eval is evaluated, not the value itself. (lin_fn
+    # was linearized at y_eval, and the values were stored.)
+    # We convert to grad after linearising for efficiency:
+    # https://github.com/patrick-kidger/optimistix/issues/89#issuecomment-2447669714
+    if autodiff_mode == "bwd":
+        (grad,) = jax.linear_transpose(lin_fn, y_eval)(jnp.array(1.0, dtype=dtype))
+        return grad
+    if autodiff_mode == "fwd":
+        return jax.jacfwd(lin_fn)(y_eval)
     else:
-        return jax.jacrev(fn, has_aux=has_aux)
-
-
-def lin_to_grad(lin_fn, *primals):
-    return jax.linear_transpose(lin_fn, *primals)(1.0)
+        raise ValueError(
+            "Only `autodiff_mode='fwd'` or `autodiff_mode='bwd'` are valid."
+        )
 
 
 def _asarray(dtype, x):
@@ -175,7 +311,7 @@ def cauchy_termination(
 
 
 class _JaxprEqual:
-    def __init__(self, jaxpr: jax.core.Jaxpr):
+    def __init__(self, jaxpr: jex.core.Jaxpr):
         self.jaxpr = jaxpr
 
     def __hash__(self):
@@ -187,9 +323,9 @@ class _JaxprEqual:
 
 
 def _wrap_jaxpr_leaf(leaf):
-    # But not jax.core.ClosedJaxpr, which contains constants that should be handled in
+    # But not jex.core.ClosedJaxpr, which contains constants that should be handled in
     # pytree style.
-    if isinstance(leaf, jax.core.Jaxpr):
+    if isinstance(leaf, jex.core.Jaxpr):
         return _JaxprEqual(leaf)
     else:
         return leaf
@@ -229,13 +365,33 @@ def filter_cond(pred, true_fun, false_fun, *operands):
     return eqx.combine(dynamic_out, static_out.value)
 
 
-def verbose_print(*args: tuple[bool, str, Any]) -> None:
+def default_verbose(verbose: bool | Callable[..., None]) -> Callable[..., None]:
+    if callable(verbose):
+        return verbose
+    elif verbose is True:
+        return _default_verbose
+    elif verbose is False:
+        return _default_no_verbose
+    else:
+        raise ValueError(
+            f"Unrecognized `verbose` of type {type(verbose)}. Accepted types are "
+            "either booleans or callables. Note that this changed in Optimistix "
+            "version 0.1.0, prior to which frozensets were expected instead. To "
+            "migrate, either simply set `verbose=True` to display everything, or pass "
+            "a custom callable `**kwargs -> None` to customise what is displayed."
+        )
+
+
+def _default_verbose(**kwargs: tuple[str, Any]) -> None:
     string_pieces = []
     arg_pieces = []
-    for display, name, value in args:
-        if display:
-            string_pieces.append(name + ": {}")
-            arg_pieces.append(value)
+    for name, value in kwargs.values():
+        string_pieces.append(name + ": {}")
+        arg_pieces.append(value)
     if len(string_pieces) > 0:
         string = ", ".join(string_pieces)
         jax.debug.print(string, *arg_pieces)
+
+
+def _default_no_verbose(**kwargs):
+    del kwargs

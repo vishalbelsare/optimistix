@@ -1,4 +1,4 @@
-from typing import Any, cast, Optional
+from typing import Any, cast
 
 import equinox as eqx
 import jax
@@ -13,9 +13,7 @@ from ._misc import inexact_asarray, NoneAux, OutAsArray
 from ._solution import Solution
 
 
-class AbstractMinimiser(
-    AbstractIterativeSolver[Y, Scalar, Aux, SolverState], strict=True
-):
+class AbstractMinimiser(AbstractIterativeSolver[Y, Scalar, Aux, SolverState]):
     """Abstract base class for all minimisers."""
 
 
@@ -30,7 +28,8 @@ def _rewrite_fn(minimum, _, inputs):
     return jax.grad(min_no_aux)(minimum)
 
 
-# Keep `optx.implicit_jvp` is happy.
+# Keep `optx.implicit_jvp` happy.
+# https://github.com/patrick-kidger/optimistix/issues/102#event-15786001854
 if _rewrite_fn.__globals__["__name__"].startswith("jaxtyping"):
     _rewrite_fn = _rewrite_fn.__wrapped__  # pyright: ignore[reportFunctionMemberAccess]
 
@@ -42,10 +41,10 @@ def minimise(
     solver: AbstractMinimiser,
     y0: Y,
     args: PyTree[Any] = None,
-    options: Optional[dict[str, Any]] = None,
+    options: dict[str, Any] | None = None,
     *,
     has_aux: bool = False,
-    max_steps: Optional[int] = 256,
+    max_steps: int | None = 256,
     adjoint: AbstractAdjoint = ImplicitAdjoint(),
     throw: bool = True,
     tags: frozenset[object] = frozenset(),
@@ -75,7 +74,7 @@ def minimise(
         an error. If `False` then the returned solution object will have a `result`
         field indicating whether any failures occured. (See [`optimistix.Solution`][].)
         Keyword only argument.
-    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing the
+    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing
         any structure of the Hessian of `fn` with respect to `y`. Used with
         [`optimistix.ImplicitAdjoint`][] to implement the implicit function theorem as
         efficiently as possible. Keyword only argument.
@@ -91,7 +90,7 @@ def minimise(
     fn = OutAsArray(fn)
     fn = eqx.filter_closure_convert(fn, y0, args)  # pyright: ignore
     fn = cast(Fn[Y, Scalar, Aux], fn)
-    f_struct, aux_struct = fn.out_struct
+    f_struct, aux_struct = fn.out_struct  # pyright: ignore[reportFunctionMemberAccess]
     if options is None:
         options = {}
 

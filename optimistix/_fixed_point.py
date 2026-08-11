@@ -1,4 +1,4 @@
-from typing import Any, cast, Generic, Optional, Union
+from typing import Any, cast, Generic
 
 import equinox as eqx
 import jax
@@ -16,9 +16,7 @@ from ._root_find import AbstractRootFinder, root_find
 from ._solution import Solution
 
 
-class AbstractFixedPointSolver(
-    AbstractIterativeSolver[Y, Y, Aux, SolverState], strict=True
-):
+class AbstractFixedPointSolver(AbstractIterativeSolver[Y, Y, Aux, SolverState]):
     """Abstract base class for all fixed point solvers."""
 
 
@@ -52,18 +50,16 @@ class _ToRootFn(eqx.Module, Generic[Y, Aux]):
 @eqx.filter_jit
 def fixed_point(
     fn: MaybeAuxFn[Y, Y, Aux],
-    solver: Union[
-        AbstractFixedPointSolver,
-        AbstractRootFinder,
-        AbstractLeastSquaresSolver,
-        AbstractMinimiser,
-    ],
+    solver: AbstractFixedPointSolver
+    | AbstractRootFinder
+    | AbstractLeastSquaresSolver
+    | AbstractMinimiser,
     y0: Y,
     args: PyTree[Any] = None,
-    options: Optional[dict[str, Any]] = None,
+    options: dict[str, Any] | None = None,
     *,
     has_aux: bool = False,
-    max_steps: Optional[int] = 256,
+    max_steps: int | None = 256,
     adjoint: AbstractAdjoint = ImplicitAdjoint(),
     throw: bool = True,
     tags: frozenset[object] = frozenset(),
@@ -101,7 +97,7 @@ def fixed_point(
         an error. If `False` then the returned solution object will have a `result`
         field indicating whether any failures occured. (See [`optimistix.Solution`][].)
         Keyword only argument.
-    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing the
+    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing
         any structure of the Jacobian of `y -> fn(y, args) - y` with respect to y. (That
         is, the structure of the matrix `dfn/dy - I`.) Used with
         [`optimistix.ImplicitAdjoint`][] to implement the implicit function theorem as
@@ -135,7 +131,7 @@ def fixed_point(
         y0 = jtu.tree_map(inexact_asarray, y0)
         fn = eqx.filter_closure_convert(fn, y0, args)  # pyright: ignore
         fn = cast(Fn[Y, Y, Aux], fn)
-        f_struct, aux_struct = fn.out_struct
+        f_struct, aux_struct = fn.out_struct  # pyright: ignore[reportFunctionMemberAccess]
         if eqx.tree_equal(jax.eval_shape(lambda: y0), f_struct) is not True:
             raise ValueError(
                 "The input and output of `fixed_point_fn` must have the same structure"

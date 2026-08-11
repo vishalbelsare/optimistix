@@ -1,3 +1,4 @@
+import contextlib
 import random
 
 import equinox as eqx
@@ -20,6 +21,10 @@ atol = rtol = 1e-6
 _root_finders = (
     optx.Newton(rtol, atol),
     optx.Chord(rtol, atol),
+)
+_solvers = (
+    *_root_finders,
+    optx.LevenbergMarquardt(rtol, atol),
 )
 smoke_aux = (jnp.ones((2, 3)), {"smoke_aux": jnp.ones(2)})
 
@@ -50,74 +55,79 @@ def test_root_find(solver, _fn, init, args):
     assert tree_allclose(fn_val, zeros, atol=atol, rtol=rtol)
 
 
-@pytest.mark.parametrize("solver", _root_finders)
+@pytest.mark.parametrize("solver", _solvers)
 @pytest.mark.parametrize("_fn, init, args", fixed_point_fn_init_args)
 @pytest.mark.parametrize("dtype", [jnp.float64, jnp.complex128])
 def test_root_find_jvp(getkey, solver, _fn, init, dtype, args):
-    args = jtu.tree_map(lambda x: x.astype(dtype), args)
-    init = jtu.tree_map(lambda x: x.astype(dtype), init)
-    atol = rtol = 1e-3
-    has_aux = random.choice([True, False])
-
-    def root_find_problem(y, args):
-        f_val = _fn(y, args)
-        return (f_val**ω - y**ω).ω
-
-    if has_aux:
-        fn = lambda x, args: (root_find_problem(x, args), smoke_aux)
+    if dtype == jnp.complex128:
+        context = pytest.warns(match="Complex support in Optimistix is a work in")
     else:
-        fn = root_find_problem
-    dynamic_args, static_args = eqx.partition(args, eqx.is_array)
-    t_init = jtu.tree_map(lambda x: jr.normal(getkey(), x.shape, dtype=dtype), init)
-    t_dynamic_args = jtu.tree_map(
-        lambda x: jr.normal(getkey(), x.shape, dtype=dtype), dynamic_args
-    )
+        context = contextlib.nullcontext()
+    with context:
+        args = jtu.tree_map(lambda x: x.astype(dtype), args)
+        init = jtu.tree_map(lambda x: x.astype(dtype), init)
+        atol = rtol = 1e-3
+        has_aux = random.choice([True, False])
 
-    def root_find(x, dynamic_args, *, adjoint):
-        args = eqx.combine(dynamic_args, static_args)
-        return optx.root_find(
-            fn,
-            solver,
-            x,
-            has_aux=has_aux,
-            args=args,
-            max_steps=10_000,
-            adjoint=adjoint,
-            throw=False,
-        ).value
+        def root_find_problem(y, args):
+            f_val = _fn(y, args)
+            return (f_val**ω - y**ω).ω
 
-    otd = optx.ImplicitAdjoint()
-    expected_out, t_expected_out = finite_difference_jvp(
-        root_find,
-        (init, dynamic_args),
-        (t_init, t_dynamic_args),
-        adjoint=otd,
-    )
-    out, t_out = eqx.filter_jvp(
-        root_find,
-        (init, dynamic_args),
-        (t_init, t_dynamic_args),
-        adjoint=otd,
-    )
-    dto = PiggybackAdjoint()
-    expected_out2, t_expected_out2 = finite_difference_jvp(
-        root_find,
-        (init, dynamic_args),
-        (t_init, t_dynamic_args),
-        adjoint=dto,
-    )
-    out2, t_out2 = eqx.filter_jvp(
-        root_find,
-        (init, dynamic_args),
-        (t_init, t_dynamic_args),
-        adjoint=dto,
-    )
-    assert tree_allclose(expected_out2, expected_out, atol=atol, rtol=rtol)
-    assert tree_allclose(out, expected_out, atol=atol, rtol=rtol)
-    assert tree_allclose(out2, expected_out, atol=atol, rtol=rtol)
-    assert tree_allclose(t_expected_out2, t_expected_out, atol=atol, rtol=rtol)
-    assert tree_allclose(t_out, t_expected_out, atol=atol, rtol=rtol)
-    assert tree_allclose(t_out2, t_expected_out, atol=atol, rtol=rtol)
+        if has_aux:
+            fn = lambda x, args: (root_find_problem(x, args), smoke_aux)
+        else:
+            fn = root_find_problem
+        dynamic_args, static_args = eqx.partition(args, eqx.is_array)
+        t_init = jtu.tree_map(lambda x: jr.normal(getkey(), x.shape, dtype=dtype), init)
+        t_dynamic_args = jtu.tree_map(
+            lambda x: jr.normal(getkey(), x.shape, dtype=dtype), dynamic_args
+        )
+
+        def root_find(x, dynamic_args, *, adjoint):
+            args = eqx.combine(dynamic_args, static_args)
+            return optx.root_find(
+                fn,
+                solver,
+                x,
+                has_aux=has_aux,
+                args=args,
+                max_steps=10_000,
+                adjoint=adjoint,
+                throw=False,
+            ).value
+
+        otd = optx.ImplicitAdjoint()
+        expected_out, t_expected_out = finite_difference_jvp(
+            root_find,
+            (init, dynamic_args),
+            (t_init, t_dynamic_args),
+            adjoint=otd,
+        )
+        out, t_out = eqx.filter_jvp(
+            root_find,
+            (init, dynamic_args),
+            (t_init, t_dynamic_args),
+            adjoint=otd,
+        )
+        dto = PiggybackAdjoint()
+        expected_out2, t_expected_out2 = finite_difference_jvp(
+            root_find,
+            (init, dynamic_args),
+            (t_init, t_dynamic_args),
+            adjoint=dto,
+        )
+        out2, t_out2 = eqx.filter_jvp(
+            root_find,
+            (init, dynamic_args),
+            (t_init, t_dynamic_args),
+            adjoint=dto,
+        )
+        assert tree_allclose(expected_out2, expected_out, atol=atol, rtol=rtol)
+        assert tree_allclose(out, expected_out, atol=atol, rtol=rtol)
+        assert tree_allclose(out2, expected_out, atol=atol, rtol=rtol)
+        assert tree_allclose(t_expected_out2, t_expected_out, atol=atol, rtol=rtol)
+        assert tree_allclose(t_out, t_expected_out, atol=atol, rtol=rtol)
+        assert tree_allclose(t_out2, t_expected_out, atol=atol, rtol=rtol)
 
 
 def test_bisection_flip():
@@ -201,6 +211,28 @@ def test_bad_root_via_min():
     y0 = jnp.array(0.5), jnp.array([-0.3, 0.7])
     sol = optx.root_find(f, optx.BFGS(rtol=1e-8, atol=1e-8), y0, throw=False)
     assert sol.result == optx.RESULTS.nonlinear_max_steps_reached
+
+
+def test_root_via_lstsq_uses_root_rewrite(monkeypatch):
+    """lstsq solvers should not use the lstsq rewrite_fn when used for root-finding"""
+
+    def _bad_rewrite(*args, **kwargs):
+        raise AssertionError(
+            "least_squares rewrite should not be used for the adjoint when root-"
+            "finding, because _root_find.rewrite_fn is more efficient."
+        )
+
+    monkeypatch.setattr(optx._least_squares, "_rewrite_fn", _bad_rewrite)
+
+    solver = optx.Dogleg(rtol=1e-8, atol=1e-8)
+
+    @eqx.filter_grad
+    def run(target):
+        sol = optx.root_find(lambda y, a: y - a, solver, y0=jnp.array(0.5), args=target)
+        return sol.value**2
+
+    grad = run(jnp.array(1.0))
+    assert jnp.allclose(grad, jnp.array(2.0), atol=1e-6, rtol=1e-6)
 
 
 @pytest.mark.parametrize("solver_cls", (optx.Newton, optx.Chord))

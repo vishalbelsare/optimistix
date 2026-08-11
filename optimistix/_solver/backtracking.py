@@ -1,5 +1,4 @@
-from typing import cast, Union
-from typing_extensions import TypeAlias
+from typing import cast, TypeAlias
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -11,22 +10,20 @@ from .._search import AbstractSearch, FunctionInfo
 from .._solution import RESULTS
 
 
-class _BacktrackingState(eqx.Module, strict=True):
+class _BacktrackingState(eqx.Module):
     step_size: Scalar
 
 
-_FnInfo: TypeAlias = Union[
-    FunctionInfo.EvalGrad,
-    FunctionInfo.EvalGradHessian,
-    FunctionInfo.EvalGradHessianInv,
-    FunctionInfo.ResidualJac,
-]
+_FnInfo: TypeAlias = (
+    FunctionInfo.EvalGrad
+    | FunctionInfo.EvalGradHessian
+    | FunctionInfo.EvalGradHessianInv
+    | FunctionInfo.ResidualJac
+)
 _FnEvalInfo: TypeAlias = FunctionInfo
 
 
-class BacktrackingArmijo(
-    AbstractSearch[Y, _FnInfo, _FnEvalInfo, _BacktrackingState], strict=True
-):
+class BacktrackingArmijo(AbstractSearch[Y, _FnInfo, _FnEvalInfo, _BacktrackingState]):
     """Perform a backtracking Armijo line search."""
 
     decrease_factor: ScalarLike = 0.5
@@ -38,17 +35,17 @@ class BacktrackingArmijo(
             self.decrease_factor,
             (self.decrease_factor <= 0)  # pyright: ignore
             | (self.decrease_factor >= 1),  # pyright: ignore
-            "`BacktrackingArmoji(decrease_factor=...)` must be between 0 and 1.",
+            "`BacktrackingArmijo(decrease_factor=...)` must be between 0 and 1.",
         )
         self.slope = eqx.error_if(
             self.slope,
             (self.slope <= 0) | (self.slope >= 1),  # pyright: ignore
-            "`BacktrackingArmoji(slope=...)` must be between 0 and 1.",
+            "`BacktrackingArmijo(slope=...)` must be between 0 and 1.",
         )
         self.step_init = eqx.error_if(
             self.step_init,
             self.step_init <= 0,  # pyright: ignore
-            "`BacktrackingArmoji(step_init=...)` must be strictly greater than 0.",
+            "`BacktrackingArmijo(step_init=...)` must be strictly greater than 0.",
         )
 
     def init(self, y: Y, f_info_struct: _FnInfo) -> _BacktrackingState:

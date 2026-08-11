@@ -1,4 +1,4 @@
-from typing import Any, cast, Generic, Optional, Union
+from typing import Any, cast, Generic
 
 import equinox as eqx
 import jax
@@ -13,9 +13,7 @@ from ._misc import inexact_asarray, NoneAux, OutAsArray, sum_squares
 from ._solution import Solution
 
 
-class AbstractLeastSquaresSolver(
-    AbstractIterativeSolver[Y, Out, Aux, SolverState], strict=True
-):
+class AbstractLeastSquaresSolver(AbstractIterativeSolver[Y, Out, Aux, SolverState]):
     """Abstract base class for all least squares solvers."""
 
 
@@ -47,13 +45,13 @@ class _ToMinimiseFn(eqx.Module, Generic[Y, Out, Aux]):
 def least_squares(
     fn: MaybeAuxFn[Y, Out, Aux],
     # no type parameters, see https://github.com/microsoft/pyright/discussions/5599
-    solver: Union[AbstractLeastSquaresSolver, AbstractMinimiser],
+    solver: AbstractLeastSquaresSolver | AbstractMinimiser,
     y0: Y,
     args: PyTree[Any] = None,
-    options: Optional[dict[str, Any]] = None,
+    options: dict[str, Any] | None = None,
     *,
     has_aux: bool = False,
-    max_steps: Optional[int] = 256,
+    max_steps: int | None = 256,
     adjoint: AbstractAdjoint = ImplicitAdjoint(),
     throw: bool = True,
     tags: frozenset[object] = frozenset(),
@@ -87,7 +85,7 @@ def least_squares(
         an error. If `False` then the returned solution object will have a `result`
         field indicating whether any failures occured. (See [`optimistix.Solution`][].)
         Keyword only argument.
-    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing the
+    - `tags`: Lineax [tags](https://docs.kidger.site/lineax/api/tags/) describing
         any structure of the Hessian of `y -> sum(fn(y, args)**2)` with respect to y.
         Used with [`optimistix.ImplicitAdjoint`][] to implement the implicit function
         theorem as efficiently as possible. Keyword only argument.
@@ -118,7 +116,7 @@ def least_squares(
         y0 = jtu.tree_map(inexact_asarray, y0)
         fn = eqx.filter_closure_convert(fn, y0, args)  # pyright: ignore
         fn = cast(Fn[Y, Out, Aux], fn)
-        f_struct, aux_struct = fn.out_struct
+        f_struct, aux_struct = fn.out_struct  # pyright: ignore[reportFunctionMemberAccess]
         if options is None:
             options = {}
         return iterative_solve(

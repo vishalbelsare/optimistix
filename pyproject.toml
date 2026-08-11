@@ -1,65 +1,110 @@
-[project]
-name = "optimistix"
-version = "0.0.7"
-description = "Nonlinear optimisation in JAX and Equinox."
-readme = "README.md"
-requires-python ="~=3.9"
-license = {file = "LICENSE"}
-authors = [
-  {name = "Jason Rader", email = "raderjason@outlook.com"},
-  {name = "Patrick Kidger", email = "contact@kidger.site"},
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[dependency-groups]
+dev = [
+  "prek==0.3.9",
+  "pyright==1.1.405",
+  "ruff==0.13.0",
+  "toml-sort==0.23.1"
 ]
-keywords = [
-    "jax",
-    "optimization",
-    "neural-networks",
-    "deep-learning",
-    "equinox",
-    "nonlinear-programming",
-    "numerical-optimization",
-    "levenberg-marquardt",
+docs = [
+  "hippogriffe==0.2.2",
+  "griffe==1.7.3",
+  "mkdocs==1.6.1",
+  "mkdocs-include-exclude-files==0.1.0",
+  "mkdocs-ipynb==0.1.1",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.28.3",
+  "mkdocstrings-python==1.16.8",
+  "pygments==2.20.0",
+  "pymdown-extensions==10.21.2"
+]
+tests = [
+  "beartype>=0.20.2",
+  "diffrax>=0.7.0",
+  "optax>=0.2.4",
+  "pytest>=8.3.5",
+  "jaxlib",
+  "sif2jax",
+  "fire",
+  "matplotlib"
+]
+
+[project]
+authors = [
+  {email = "raderjason@outlook.com", name = "Jason Rader"},
+  {email = "contact@kidger.site", name = "Patrick Kidger"},
+  {email = "johanna@haffner.dev", name = "Johanna Haffner"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Financial and Insurance Industry",
-    "Intended Audience :: Information Technology",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
-    "Natural Language :: English",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Scientific/Engineering :: Information Analysis",
-    "Topic :: Scientific/Engineering :: Mathematics",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Mathematics"
 ]
-urls = {repository = "https://github.com/patrick-kidger/optimistix" }
-dependencies = ["jax>=0.4.28", "jaxtyping>=0.2.23", "lineax>=0.0.5", "equinox>=0.11.1", "typing_extensions>=4.5.0"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+dependencies = ["jax>=0.4.38,!=0.7.0,!=0.7.1", "jaxtyping>=0.2.24", "lineax>=0.0.6", "equinox>=0.11.11", "typing_extensions>=4.5.0"]
+description = "Nonlinear optimisation in JAX and Equinox."
+keywords = [
+  "jax",
+  "optimization",
+  "neural-networks",
+  "deep-learning",
+  "equinox",
+  "nonlinear-programming",
+  "numerical-optimization",
+  "levenberg-marquardt"
+]
+license = {file = "LICENSE"}
+name = "optimistix"
+readme = "README.md"
+requires-python = "~=3.11"
+urls = {repository = "https://github.com/patrick-kidger/optimistix"}
+version = "0.1.0"
 
 [tool.hatch.build]
 include = ["optimistix/*"]
 
+[tool.pyright]
+include = ["optimistix", "tests"]
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = false # Incompatible with eqx.AbstractVar
+reportInvalidTypeForm = false # Incompatible with FunctionInfo.Foo
+
 [tool.pytest.ini_options]
-addopts = "--jaxtyping-packages=optimistix,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
+addopts = "--jaxtyping-packages=optimistix,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On)) --benchmark-skip"
+filterwarnings = [
+  "error",
+  'ignore:Setting \`jax_pmap_shmap_merge:DeprecationWarning'
+]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
-fixable = ["I001", "F401"]
-ignore = ["E402", "E721", "E731", "E741", "F722"]
-ignore-init-module-imports = true
-select = ["E", "F", "I001"]
 src = []
 
-[tool.ruff.isort]
+[tool.ruff.lint]
+fixable = ["I001", "F401", "UP"]
+ignore = ["E402", "E721", "E731", "E741", "F722"]
+select = ["E", "F", "I001", "UP"]
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+"collections" = "co"
+"functools" = "ft"
+"itertools" = "it"
+
+[tool.ruff.lint.isort]
 combine-as-imports = true
 extra-standard-library = ["typing_extensions"]
 lines-after-imports = 2
 order-by-type = false
 
-[tool.pyright]
-reportIncompatibleMethodOverride = true
-reportIncompatibleVariableOverride = false  # Incompatible with eqx.AbstractVar
-include = ["optimistix", "tests"]
+[tool.uv]
+default-groups = ["dev", "docs", "tests"]
